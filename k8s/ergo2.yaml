@@ -1,0 +1,107 @@
+# certificate.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: irc-tls-certificate
+  namespace: default
+spec:
+  secretName: irc-tls-secret
+  issuerRef:
+    name: threadr-issuer
+    kind: ClusterIssuer
+  dnsNames:
+    - irc.tunnel.threadr.ai
+  duration: 2160h
+  renewBefore: 360h
+  privateKey:
+    algorithm: RSA
+    encoding: PKCS1
+    size: 2048
+  usages:
+    - digital signature
+    - key encipherment
+    - server auth
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ergo-data
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: local-path
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ergo
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ergo
+  template:
+    metadata:
+      labels:
+        app: ergo
+    spec:
+      containers:
+      - name: ergo
+        image: ghcr.io/ergochat/ergo:stable
+        ports:
+        - containerPort: 6667
+          name: irc
+        - containerPort: 6697
+          name: irc-tls
+        volumeMounts:
+        - name: data
+          mountPath: /ircd
+        - name: tls
+          mountPath: /ircd/tls.crt
+          subPath: tls.crt
+        - name: tls
+          mountPath: /ircd/tls.key
+          subPath: tls.key
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: ergo-data
+      - name: tls
+        secret:
+          secretName: irc-tls-secret
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ergo
+  namespace: default
+  annotations:
+    metallb.universe.tf/address-pool: k3s-pool
+    metallb.universe.tf/allow-shared-ip: "true"
+    external-dns.alpha.kubernetes.io/hostname: "irc.tunnel.threadr.ai"
+spec:
+  type: LoadBalancer
+  ipFamilyPolicy: PreferDualStack
+  ipFamilies:
+    - IPv6
+    - IPv4
+  externalTrafficPolicy: Local
+  selector:
+    app: ergo
+  ports:
+    - name: irc
+      port: 6667
+      targetPort: 6667
+      protocol: TCP
+    - name: irc-tls
+      port: 6697
+      targetPort: 6697
+      protocol: TCP

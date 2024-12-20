@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ergo
+  annotations:
+    metallb.universe.tf/address-pool: k3s-pool
+    metallb.universe.tf/allow-shared-ip: "true"
+    external-dns.alpha.kubernetes.io/hostname: "irc.tunnel.threadr.ai"
+spec:
+  type: LoadBalancer
+  ipFamilyPolicy: PreferDualStack
+  ipFamilies:
+    - IPv6
+    - IPv4
+  externalTrafficPolicy: Local
+  selector:
+    app: irc
+  ports:
+    - name: irc
+      port: 6667
+      targetPort: 6667
+      protocol: TCP
+    - name: irc-tls
+      port: 6697
+      targetPort: 6697
+      protocol: TCP

@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ergo
+  namespace: ircd
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: ergo
+  template:
+    metadata:
+      labels:
+        app: ergo
+    spec:
+      shareProcessNamespace: true
+      containers:
+        - name: ergo
+          image: ghcr.io/ergochat/ergo
+          ports:
+            - containerPort: 6697
+              name: ircs
+            - containerPort: 443
+              name: websocket
+          readinessProbe:
+            tcpSocket:
+              port: 6697
+          livenessProbe:
+            tcpSocket:
+              port: 6697
+          volumeMounts:
+            - mountPath: /ircd/
+              name: irc-config
+              readOnly: true
+            - mountPath: /ircd/tls
+              name: irc-certs
+              readOnly: true
+            - mountPath: /ircd/db
+              name: irc-db
+        - name: config-reloader
+          image: ghcr.io/ergochat/ergo
+          command: ["/bin/sh"]
+          args:
+            - "-c"
+            - |
+              echo "Watching /ircd/";
+              inotifyd - /ircd/:wMymndox /ircd/tls/:wMymndox | while read -r notifies ; do
+                echo "$notifies";
+                echo "notify received, sending SIGHUP";
+                pkill -HUP ergo;
+              done
+              echo "Exiting.";
+          volumeMounts:
+            - mountPath: /ircd/
+              name: irc-config
+              readOnly: true
+            - mountPath: /ircd/tls
+              name: irc-certs
+              readOnly: true
+      volumes:
+        - name: irc-config
+          configMap:
+            name: irc-config
+        - name: irc-certs
+          secret:
+            secretName: irc-certs  # Corrected secret name
+        - name: irc-db
+          persistentVolumeClaim:
+            claimName: irc-db
